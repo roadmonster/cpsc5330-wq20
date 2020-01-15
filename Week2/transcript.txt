@@ -1,0 +1,410 @@
+#1.  Running MapReduce
+
+#Goals:
+# * Use a script to make running MapReduce jobs easier
+# * Show what various error messages look like
+# * Show a more complex use of MapReduce (change the map key and have reduce take an average)
+
+# Started with a new VM.
+# Copied the folder mrstreaming from the repository into my home directory
+#   (Ideally we would just clone the repository in the VM, but the command
+#    was breaking on an HTTP error, and it was easiest just to copy the directory 
+#   in, because VMWare Workstation supports drag and drop
+# * Create the bin directory to hold the script, which looks like this:
+
+cat bin/stream
+hdfs dfs -rm /user/training/data-output/$3/*
+hdfs dfs -rmdir /user/training/data-output/$3
+hadoop jar /usr/lib/hadoop-mapreduce/hadoop-streaming.jar \
+    -file /home/training/mrstreaming/$1/mapper.py \
+    -mapper /home/training/mrstreaming/$1/mapper.py \
+    -file /home/training/mrstreaming/$1/reducer.py \
+    -reducer /home/training/mrstreaming/$1/reducer.py \
+    -input /user/training/data-input/$2/* \
+    -output /user/training/data-output/$3 \
+
+#  Notice it takes three arguments, which fix the location of the mapper and reducer, the 
+#  MapReduce input file directory, and the MapReduce output file directory.
+#  Notice that having multiple input files in the HDFS input directory is fine:  MapReduce
+#    will automatically iterate over all of them
+#  Pay attention to the fact that /user/training is a directory in HDFS and /home/training 
+#     is a directory on the VM filesystem
+
+#  Get a big text file for test/demo purposes.  This came from a link on the streaming MapReduce
+#   website.  I'm putting it in /tmp because I'm going to upload it to HDFS then I don't need it
+
+[training@localhost ~]$ curl http://www.gutenberg.org/files/4300/4300-0.txt > /tmp/ulysses.txt
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 1549k  100 1549k    0     0   801k      0  0:00:01  0:00:01 --:--:--  879k
+
+# And just verify it's a reasonable size and content looks reasonable
+
+[training@localhost ~]$ head /tmp/ulysses.txt 
+﻿
+The Project Gutenberg EBook of Ulysses, by James Joyce
+
+This eBook is for the use of anyone anywhere at no cost and with
+almost no restrictions whatsoever. You may copy it, give it away or
+re-use it under the terms of the Project Gutenberg License included
+with this eBook or online at www.gutenberg.org
+
+
+Title: Ulysses
+
+[training@localhost ~]$ wc /tmp/ulysses.txt 
+  33230  268132 1586488 /tmp/ulysses.txt
+
+# Put the script up in the HDFS input directory, which according to the script is 
+#   -input /user/training/data-input/$2/*
+# That is, we need to create data-input, then create some subdirectory to hold our text files
+
+[training@localhost ~]$ hdfs dfs -mkdir /user/training/data-input
+[training@localhost ~]$ hdfs dfs -mkdir /user/training/data-input/ulysses
+[training@localhost ~]$ hdfs dfs -put /tmp/ulysses.txt /user/training/data-input/ulysses/ulysses.txt 
+
+# And see if the content looks the same up there in HDFS
+[training@localhost ~]$ hdfs dfs -cat /user/training/data-input/ulysses/ulysses.txt | head
+﻿
+The Project Gutenberg EBook of Ulysses, by James Joyce
+
+This eBook is for the use of anyone anywhere at no cost and with
+almost no restrictions whatsoever. You may copy it, give it away or
+re-use it under the terms of the Project Gutenberg License included
+with this eBook or online at www.gutenberg.org
+
+
+Title: Ulysses
+
+#  Create a directory to hold the map-reduce output.
+#  According to the script:  -output /user/training/data-output/$3
+
+[training@localhost ~]$ hdfs dfs -mkdir /user/training/data-output
+[training@localhost ~]$ hdfs dfs -mkdir /user/training/data-output/ulysses
+
+# But before we run on the cluster, look at the mapper and reducer, and run some local tests
+
+[training@localhost ~]$ cat mrstreaming/avg-word-length-by-letter/mapper.py
+#!/usr/bin/env python
+"""mapper.py"""
+
+import sys
+import string
+
+
+for line in sys.stdin:
+    for word in line.strip().split():
+
+        # Normalize the word to lower case, then remove all characters that aren't
+        # lower-case letters
+        lowered = word.lower()
+        filtered = filter(lambda c: 97 <= ord(c) <= 122, lowered)
+
+        if len(filtered) > 0:
+            # Just for illustration purposes, demonstrate mapper can generate any (key,value) it
+            # wants to.  Key is a classification based on first letter in the word:  
+            #    words beginning with 'a' to 'i' are tagged as "early"  'j' to 'r' is "middle", 
+            #    and 's' to 'z' are late.  No particular reason, just to do something like see 
+            #    whether 'early' words are shorter on average than 'late' and other things like that
+
+            o = ord(filtered[0])
+            if o <= 105:
+                k = 'early'
+            elif o <= 114:
+                k = 'middle'
+            elif o <= 122:
+                k = 'late'
+            else: 
+                raise "Bad ordinal!"
+            print '%s\t%s' % (k, len(filtered))
+
+#  Test the mapper on the local machine
+[training@localhost ~]$ python mrstreaming/avg-word-length-by-letter/mapper.py < /tmp/ulysses.txt | head -n 3
+late	3
+middle	7
+early	9
+
+# Here is the reducer.  For each key (early, middle,late) it just takes the average of the values for those
+# records
+
+[training@localhost ~]$ cat mrstreaming/avg-word-length-by-letter/reducer.py
+#!/usr/bin/env python
+import sys
+
+current_label = None
+current_sum = 0
+current_count = 0
+word = None
+
+for line in sys.stdin:
+    line = line.strip()
+    label, fcount = line.split('\t', 1)
+    #  It is a big decision whether to error, log, or ignore bad inputs!
+    try:
+        fcount = int(fcount)
+    except ValueError:
+        continue
+
+    if current_label == label:
+        current_sum += fcount
+        current_count += 1
+    else:
+        if current_label:
+            # Multipy by 1.0 needed to force real-valued division
+            print '%s\t%f' % (current_label, (1.0 * current_sum)/current_count)
+        current_label = label
+        current_sum = fcount
+        current_count = 1
+
+if current_label == label:
+    print '%s\t%f' % (current_label, (current_sum * 1.0)/ current_count)
+[training@localhost ~]$ 
+
+# This is local testing of map and reduce.  Expect only three records from the reducer
+
+[training@localhost ~]$ python mrstreaming/avg-word-length-by-letter/mapper.py < /tmp/ulysses.txt | sort | python mrstreaming/avg-word-length-by-letter/reducer.py
+early	4.375647
+late	4.466427
+middle	4.702699
+
+# Look at three error conditions:
+#    * mapper or reducer is not executable
+#    * syntax error in the reducer
+#    * mapper throws an exception
+#
+# Transcript and errors deleted.  The thing to remember is how to go to the 
+#  job tracker, look for failed task attempts, and examine the STDERR file for a
+#  worker node that has a failed task.
+
+# Here is a working version to show where the output data goes and how to look at it
+
+[training@localhost ~]$ stream avg-word-length-by-letter ulysses ulysses
+20/01/13 20:08:50 WARN streaming.StreamJob: -file option is deprecated, please use generic option -files instead.
+-- output removed except for the interesting lines-- 
+20/01/13 20:10:11 INFO mapreduce.Job: Job job_1578944364430_0001 completed successfully
+20/01/13 20:10:12 INFO streaming.StreamJob: Output directory: /user/hanks/data-output/ulysses
+
+# Download and view the output files 
+[training@localhost ~]$ hdfs dfs -getmerge /user/training/data-output/ulysses ulysses-count.txt
+[training@localhost ~]$ cat ulysses-count.txt 
+early	4.375647
+late	4.466427
+middle	4.702699
+[training@localhost ~]$ 
+
+############################################################################################
+#  2.  Sqoop and relational databases
+
+# Get a database into our MySQL server.  Start with a MySQL dump file then read it in to local MySQL
+
+[training@localhost ~]$ mysqldump --host relational.fit.cvut.cz --port 3306 --user guest > /tmp/world.sql
+[training@localhost ~]$ head /tmp/world.sql -n 5
+-- MySQL dump 10.13  Distrib 5.1.73, for redhat-linux-gnu (x86_64)
+--
+-- Host: relational.fit.cvut.cz    Database: world
+-- ------------------------------------------------------
+-- Server version	5.5.5-10.3.15-MariaDB-log
+
+# Create a new database for this database and load it in. 
+[training@localhost ~]$ mysql -p
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+mysql> create database world;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> quit
+Bye
+[training@localhost ~]$ mysql -p < /tmp/world.sql world
+Enter password: 
+[training@localhost ~]$ mysql -p
+Enter password: 
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 1047
+Server version: 5.1.73 Source distribution
+
+Copyright (c) 2000, 2013, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| hue                |
+| loudacre           |
+| metastore          |
+| mysql              |
+| test               |
+| world              |
++--------------------+
+7 rows in set (0.01 sec)
+
+mysql> use world;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+mysql> show tables;
++-----------------+
+| Tables_in_world |
++-----------------+
+| City            |
+| Country         |
+| CountryLanguage |
++-----------------+
+3 rows in set (0.00 sec)
+
+mysql> describe City;
++-------------+----------+------+-----+---------+----------------+
+| Field       | Type     | Null | Key | Default | Extra          |
++-------------+----------+------+-----+---------+----------------+
+| ID          | int(11)  | NO   | PRI | NULL    | auto_increment |
+| Name        | char(35) | NO   |     |         |                |
+| CountryCode | char(3)  | NO   | MUL |         |                |
+| District    | char(20) | NO   |     |         |                |
+| Population  | int(11)  | NO   |     | 0       |                |
++-------------+----------+------+-----+---------+----------------+
+5 rows in set (0.00 sec)
+
+### This is what we're going to do first in MapReduce:  what are the 10 countries with the highest
+### population per city?   Easy to do in local SQL;  next do it in MapReduce -- a lot like average word length!
+
+mysql> select CountryCode, avg(Population) from City group by CountryCode order by avg(Population) desc limit 10;
++-------------+-----------------+
+| CountryCode | avg(Population) |
++-------------+-----------------+
+| SGP         |    4017733.0000 |
+| HKG         |    1650316.5000 |
+| URY         |    1236000.0000 |
+| GIN         |    1090610.0000 |
+| UGA         |     890800.0000 |
+| SLE         |     850000.0000 |
+| LBR         |     850000.0000 |
+| MLI         |     809552.0000 |
+| AUS         |     808119.0000 |
+| MNG         |     773700.0000 |
++-------------+-----------------+
+10 rows in set (0.01 sec)
+
+###  Task is to move the City table into HDFS then write a MapReduce script to do the average pop
+
+[training@localhost ~]$ sqoop list-databases --connect jdbc:mysql://localhost/ --username training --password training
+20/01/13 20:38:27 INFO sqoop.Sqoop: Running Sqoop version: 1.4.5-cdh5.4.3
+20/01/13 20:38:27 WARN tool.BaseSqoopTool: Setting your password on the command-line is insecure. Consider using -P instead.
+20/01/13 20:38:28 INFO manager.MySQLManager: Preparing to use a MySQL streaming resultset.
+information_schema
+hue
+loudacre
+metastore
+mysql
+test
+world
+
+#  Notice how we specify a database in the connect URL
+
+[training@localhost ~]$ sqoop list-tables --connect jdbc:mysql://localhost/world --username training --password training
+20/01/13 20:39:18 INFO sqoop.Sqoop: Running Sqoop version: 1.4.5-cdh5.4.3
+20/01/13 20:39:18 WARN tool.BaseSqoopTool: Setting your password on the command-line is insecure. Consider using -P instead.
+20/01/13 20:39:19 INFO manager.MySQLManager: Preparing to use a MySQL streaming resultset.
+City
+Country
+CountryLanguage
+
+#  This puts the City table in the directory /user/training/
+#  It's worth looking at the MapReduce output to see how it's managing the import
+
+[training@localhost ~]$ sqoop import --connect jdbc:mysql://localhost/world --username training --password training --table City --target-dir /user/training/data-input/city
+20/01/14 19:38:55 INFO sqoop.Sqoop: Running Sqoop version: 1.4.5-cdh5.4.3
+20/01/14 19:38:55 WARN tool.BaseSqoopTool: Setting your password on the command-line is insecure. Consider using -P instead.
+20/01/14 19:38:56 INFO manager.MySQLManager: Preparing to use a MySQL streaming resultset.
+20/01/14 19:38:56 INFO tool.CodeGenTool: Beginning code generation
+20/01/14 19:38:57 INFO manager.SqlManager: Executing SQL statement: SELECT t.* FROM `City` AS t LIMIT 1
+20/01/14 19:38:57 INFO manager.SqlManager: Executing SQL statement: SELECT t.* FROM `City` AS t LIMIT 1
+20/01/14 19:38:57 INFO orm.CompilationManager: HADOOP_MAPRED_HOME is /usr/lib/hadoop-mapreduce
+Note: /tmp/sqoop-training/compile/f244c971b01030a3e8d7c97e9a892c10/City.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+20/01/14 19:39:03 INFO orm.CompilationManager: Writing jar file: /tmp/sqoop-training/compile/f244c971b01030a3e8d7c97e9a892c10/City.jar
+20/01/14 19:39:03 WARN manager.MySQLManager: It looks like you are importing from mysql.
+20/01/14 19:39:03 WARN manager.MySQLManager: This transfer can be faster! Use the --direct
+20/01/14 19:39:03 WARN manager.MySQLManager: option to exercise a MySQL-specific fast path.
+20/01/14 19:39:03 INFO manager.MySQLManager: Setting zero DATETIME behavior to convertToNull (mysql)
+20/01/14 19:39:03 INFO mapreduce.ImportJobBase: Beginning import of City
+20/01/14 19:39:03 INFO Configuration.deprecation: mapred.job.tracker is deprecated. Instead, use mapreduce.jobtracker.address
+20/01/14 19:39:04 INFO Configuration.deprecation: mapred.jar is deprecated. Instead, use mapreduce.job.jar
+20/01/14 19:39:06 INFO Configuration.deprecation: mapred.map.tasks is deprecated. Instead, use mapreduce.job.maps
+20/01/14 19:39:06 INFO client.RMProxy: Connecting to ResourceManager at /0.0.0.0:8032
+20/01/14 19:39:10 INFO db.DBInputFormat: Using read commited transaction isolation
+20/01/14 19:39:10 INFO db.DataDrivenDBInputFormat: BoundingValsQuery: SELECT MIN(`ID`), MAX(`ID`) FROM `City`
+20/01/14 19:39:10 INFO mapreduce.JobSubmitter: number of splits:4
+20/01/14 19:39:11 INFO mapreduce.JobSubmitter: Submitting tokens for job: job_1578944364430_0009
+20/01/14 19:39:12 INFO impl.YarnClientImpl: Submitted application application_1578944364430_0009
+20/01/14 19:39:12 INFO mapreduce.Job: The url to track the job: http://localhost:8088/proxy/application_1578944364430_0009/
+20/01/14 19:39:12 INFO mapreduce.Job: Running job: job_1578944364430_0009
+20/01/14 19:39:28 INFO mapreduce.Job: Job job_1578944364430_0009 running in uber mode : false
+20/01/14 19:39:28 INFO mapreduce.Job:  map 0% reduce 0%
+20/01/14 19:39:41 INFO mapreduce.Job:  map 25% reduce 0%
+20/01/14 19:39:53 INFO mapreduce.Job:  map 50% reduce 0%
+20/01/14 19:40:07 INFO mapreduce.Job:  map 75% reduce 0%
+20/01/14 19:40:21 INFO mapreduce.Job:  map 100% reduce 0%
+20/01/14 19:40:21 INFO mapreduce.Job: Job job_1578944364430_0009 completed successfully
+20/01/14 19:40:21 INFO mapreduce.Job: Counters: 30
+	File System Counters
+		FILE: Number of bytes read=0
+		FILE: Number of bytes written=543648
+		FILE: Number of read operations=0
+		FILE: Number of large read operations=0
+		FILE: Number of write operations=0
+		HDFS: Number of bytes read=414
+		HDFS: Number of bytes written=144481
+		HDFS: Number of read operations=16
+		HDFS: Number of large read operations=0
+		HDFS: Number of write operations=8
+	Job Counters 
+		Launched map tasks=4
+		Other local map tasks=4
+		Total time spent by all maps in occupied slots (ms)=0
+		Total time spent by all reduces in occupied slots (ms)=0
+		Total time spent by all map tasks (ms)=44463
+		Total vcore-seconds taken by all map tasks=44463
+		Total megabyte-seconds taken by all map tasks=11382528
+	Map-Reduce Framework
+		Map input records=4079
+		Map output records=4079
+		Input split bytes=414
+		Spilled Records=0
+		Failed Shuffles=0
+		Merged Map outputs=0
+		GC time elapsed (ms)=687
+		CPU time spent (ms)=7380
+		Physical memory (bytes) snapshot=489148416
+		Virtual memory (bytes) snapshot=3378053120
+		Total committed heap usage (bytes)=191889408
+	File Input Format Counters 
+		Bytes Read=0
+	File Output Format Counters 
+		Bytes Written=144481
+20/01/14 19:40:21 INFO mapreduce.ImportJobBase: Transferred 141.0947 KB in 74.8397 seconds (1.8853 KB/sec)
+20/01/14 19:40:21 INFO mapreduce.ImportJobBase: Retrieved 4079 records.
+
+#  What are the output files, and what do they look like?
+
+[training@localhost ~]$ hdfs dfs -ls /user/training/data-input/city
+Found 5 items
+-rw-rw-rw-   1 training supergroup          0 2020-01-14 19:40 /user/training/data-input/city/_SUCCESS
+-rw-rw-rw-   1 training supergroup      37088 2020-01-14 19:39 /user/training/data-input/city/part-m-00000
+-rw-rw-rw-   1 training supergroup      35361 2020-01-14 19:39 /user/training/data-input/city/part-m-00001
+-rw-rw-rw-   1 training supergroup      35884 2020-01-14 19:40 /user/training/data-input/city/part-m-00002
+-rw-rw-rw-   1 training supergroup      36148 2020-01-14 19:40 /user/training/data-input/city/part-m-00003
+
+[training@localhost ~]$ hdfs dfs -cat /user/training/data-input/city/part-m-00000 | head -n 5
+1,Kabul,AFG,Kabol,1780000
+2,Qandahar,AFG,Qandahar,237500
+3,Herat,AFG,Herat,186800
+4,Mazar-e-Sharif,AFG,Balkh,127800
+5,Amsterdam,NLD,Noord-Holland,731200
+cat: Unable to write to output stream.
+[training@localhost ~]$ 
