@@ -1,3 +1,4 @@
+#################################################################
 #1.  Running MapReduce
 
 #Goals:
@@ -407,4 +408,424 @@ Found 5 items
 4,Mazar-e-Sharif,AFG,Balkh,127800
 5,Amsterdam,NLD,Noord-Holland,731200
 cat: Unable to write to output stream.
-[training@localhost ~]$ 
+
+# Now with the city table we can recreate the query we did in MySQL:  compute the average population 
+# per city for each country, and show the codes and average population for the top 10.  Our MapReduce 
+# results should match MySQL
+#
+# This code is very similar to average number of letters per word category, so I started there and
+# adapted the code only to reflect the different input records to the mapper, and the different field
+# delimiter in the input file.
+
+# Here is the code.  (Fair note .... my actual process here was to write the code, then run the local tests
+# below, and I had to edit the code several times before getting a final correct version.)
+
+[training@localhost ~]$ cat mrstreaming/avg-pop-per-city/mapper.py
+#!/usr/bin/env python
+
+import sys
+import string
+
+# Input records look like this:
+#   1,Kabul,AFG,Kabol,1780000
+# The third field is the country code, the fifth field is the population.
+# We emit (code, population)
+#
+# Notice unlike word count, we are no emitting one record per word;
+# we are just emitting one record per line. So the inner for loop goes away
+#
+
+for line in sys.stdin:
+    fields = line.strip().split(",")
+    country_code = fields[2]
+    population = fields[4]
+    print '%s\t%s' % (country_code, population)
+
+[training@localhost ~]$ cat mrstreaming/avg-pop-per-city/reducer.py
+#!/usr/bin/env python
+import sys
+
+# Input is tab-delimited tuples of the form (code, population)
+# Taking the average population per code is exactly like average
+# word length per word category
+
+current_code = None
+current_sum = 0
+current_count = 0
+code = None
+
+for line in sys.stdin:
+    line = line.strip()
+    code, pop = line.split('\t')
+
+    if current_code == code:
+        current_sum += float(pop)
+        current_count += 1
+    else:
+        if current_code:
+            print '%s\t%f' % (current_code, current_sum/current_count)
+        current_code = code
+        current_sum = float(pop)
+        current_count = 1
+
+if current_code == code:
+    print '%s\t%f' % (current_code, current_sum / current_count)
+
+# Now here are some local tests of the mapper and the reducer.  To test, I'll download
+# just one part file from the output table in HDFS
+
+[training@localhost ~]$ hdfs dfs -get /user/training/data-input/city/part-m-00000
+[training@localhost ~]$ head -n 2 part-m-00000 
+1,Kabul,AFG,Kabol,1780000
+2,Qandahar,AFG,Qandahar,237500
+
+# Test the mapper alone.   Should be two-tuples, tab separated, country code then population
+
+[training@localhost ~]$ python mrstreaming/avg-pop-per-city/mapper.py < part-m-00000 | head -n 5
+AFG	1780000
+AFG	237500
+AFG	186800
+AFG	127800
+NLD	731200
+
+# Test the mapper and reducer.  Should be two-tuples, tab separated, country code then a float (avg population)
+[training@localhost ~]$ python mrstreaming/avg-pop-per-city/mapper.py < part-m-00000 | sort | python mrstreaming/avg-pop-per-city/reducer.py
+ABW	29034.000000
+AFG	583025.000000
+AGO	512320.000000
+AIA	778.000000
+ALB	270000.000000
+AND	21189.000000
+ANT	2345.000000
+ARE	345667.200000
+ARG	350816.894737
+ARM	544366.666667
+ASM	3761.500000
+ATG	24000.000000
+AUS	808119.000000
+AZE	616000.000000
+BDI	300000.000000
+BEL	178813.555556
+BEN	242125.750000
+BFA	409666.666667
+BGD	357079.416667
+BGR	269691.500000
+BHR	148000.000000
+BHS	172000.000000
+BIH	199702.000000
+BLZ	31457.500000
+BMU	1500.000000
+BOL	422330.500000
+BRA	343507.448000
+BRB	6070.000000
+BRN	21484.000000
+BTN	22000.000000
+BWA	157411.000000
+CHL	335102.413793
+COK	11900.000000
+CRI	339131.000000
+CYM	19600.000000
+DJI	383000.000000
+DMA	16243.000000
+DOM	406379.333333
+DZA	288454.388889
+ECU	382942.800000
+EGY	542785.918919
+ERI	431000.000000
+ESP	282528.627119
+ETH	455762.000000
+FJI	77366.000000
+FLK	1636.000000
+FRO	14542.000000
+GAB	419000.000000
+GBR	276995.962963
+GEO	376180.000000
+GHA	363977.800000
+GIB	27025.000000
+GIN	1090610.000000
+GLP	37690.000000
+GMB	72463.000000
+GNB	241000.000000
+GRD	4621.000000
+GRL	13445.000000
+GTM	306297.000000
+GUM	5319.500000
+GUY	254000.000000
+HKG	1650316.500000
+HND	429000.000000
+HTI	379334.500000
+IDN	453838.963415
+NLD	185001.750000
+PHL	227461.698529
+SJM	1438.000000
+SLV	162604.428571
+VGB	8000.000000
+Traceback (most recent call last):
+  File "mrstreaming/avg-pop-per-city/reducer.py", line 28, in <module>
+    print '%s\t%f' % (current_label, current_sum / current_count)
+NameError: name 'current_label' is not defined
+[training@localhost ~]$ !!
+python mrstreaming/avg-pop-per-city/mapper.py < part-m-00000 | sort | python mrstreaming/avg-pop-per-city/reducer.py | head -n 5
+ABW	29034.000000
+AFG	583025.000000
+AGO	512320.000000
+AIA	778.000000
+ALB	270000.000000
+
+###########################################
+#  Now we're ready to run the whole job in Hadoop.   We should be all set:  mapper and reducer is in the 
+#  right place, the input files are in the right place, we need to specify a name for the directory holding
+#  the output files.   Remember the three arguments to our script specify location of scripts, location of input, 
+#  location of output.
+
+[training@localhost ~]$ stream avg-pop-per-city city city
+rm: `/user/training/data-output/city/*': No such file or directory
+rmdir: `/user/training/data-output/city': No such file or directory
+20/01/15 09:24:37 WARN streaming.StreamJob: -file option is deprecated, please use generic option -files instead.
+packageJobJar: [/home/training/mrstreaming/avg-pop-per-city/mapper.py, /home/training/mrstreaming/avg-pop-per-city/reducer.py] [/usr/lib/hadoop-mapreduce/hadoop-streaming-2.6.0-cdh5.4.3.jar] /tmp/streamjob6433550570484430623.jar tmpDir=null
+20/01/15 09:24:38 INFO client.RMProxy: Connecting to ResourceManager at /0.0.0.0:8032
+20/01/15 09:24:39 INFO client.RMProxy: Connecting to ResourceManager at /0.0.0.0:8032
+20/01/15 09:24:39 INFO mapred.FileInputFormat: Total input paths to process : 4
+20/01/15 09:24:39 INFO mapreduce.JobSubmitter: number of splits:4
+20/01/15 09:24:40 INFO mapreduce.JobSubmitter: Submitting tokens for job: job_1578944364430_0010
+20/01/15 09:24:40 INFO impl.YarnClientImpl: Submitted application application_1578944364430_0010
+20/01/15 09:24:40 INFO mapreduce.Job: The url to track the job: http://localhost:8088/proxy/application_1578944364430_0010/
+20/01/15 09:24:40 INFO mapreduce.Job: Running job: job_1578944364430_0010
+20/01/15 09:24:47 INFO mapreduce.Job: Job job_1578944364430_0010 running in uber mode : false
+20/01/15 09:24:47 INFO mapreduce.Job:  map 0% reduce 0%
+20/01/15 09:24:53 INFO mapreduce.Job:  map 25% reduce 0%
+20/01/15 09:24:58 INFO mapreduce.Job:  map 50% reduce 0%
+20/01/15 09:25:03 INFO mapreduce.Job:  map 75% reduce 0%
+20/01/15 09:25:08 INFO mapreduce.Job:  map 100% reduce 0%
+20/01/15 09:25:14 INFO mapreduce.Job:  map 100% reduce 100%
+20/01/15 09:25:14 INFO mapreduce.Job: Job job_1578944364430_0010 completed successfully
+20/01/15 09:25:15 INFO mapreduce.Job: Counters: 49
+	File System Counters
+		FILE: Number of bytes read=52701
+		FILE: Number of bytes written=678035
+		FILE: Number of read operations=0
+		FILE: Number of large read operations=0
+		FILE: Number of write operations=0
+		HDFS: Number of bytes read=144945
+		HDFS: Number of bytes written=4069
+		HDFS: Number of read operations=15
+		HDFS: Number of large read operations=0
+		HDFS: Number of write operations=2
+	Job Counters 
+		Launched map tasks=4
+		Launched reduce tasks=1
+		Data-local map tasks=4
+		Total time spent by all maps in occupied slots (ms)=0
+		Total time spent by all reduces in occupied slots (ms)=0
+		Total time spent by all map tasks (ms)=15503
+		Total time spent by all reduce tasks (ms)=3970
+		Total vcore-seconds taken by all map tasks=15503
+		Total vcore-seconds taken by all reduce tasks=3970
+		Total megabyte-seconds taken by all map tasks=3968768
+		Total megabyte-seconds taken by all reduce tasks=2032640
+	Map-Reduce Framework
+		Map input records=4079
+		Map output records=4079
+		Map output bytes=44537
+		Map output materialized bytes=52719
+		Input split bytes=464
+		Combine input records=0
+		Combine output records=0
+		Reduce input groups=232
+		Reduce shuffle bytes=52719
+		Reduce input records=4079
+		Reduce output records=232
+		Spilled Records=8158
+		Shuffled Maps =4
+		Failed Shuffles=0
+		Merged Map outputs=4
+		GC time elapsed (ms)=296
+		CPU time spent (ms)=3110
+		Physical memory (bytes) snapshot=989696000
+		Virtual memory (bytes) snapshot=4416163840
+		Total committed heap usage (bytes)=644481024
+	Shuffle Errors
+		BAD_ID=0
+		CONNECTION=0
+		IO_ERROR=0
+		WRONG_LENGTH=0
+		WRONG_MAP=0
+		WRONG_REDUCE=0
+	File Input Format Counters 
+		Bytes Read=144481
+	File Output Format Counters 
+		Bytes Written=4069
+20/01/15 09:25:15 INFO streaming.StreamJob: Output directory: /user/training/data-output/city
+
+##################################################
+# Job completed correctly.  Check whether output files are there, and look OK
+
+[training@localhost ~]$ hdfs dfs -ls /user/training/data-output/city
+Found 2 items
+-rw-rw-rw-   1 training supergroup          0 2020-01-15 09:25 /user/training/data-output/city/_SUCCESS
+-rw-rw-rw-   1 training supergroup       4069 2020-01-15 09:25 /user/training/data-output/city/part-00000
+[training@localhost ~]$ hdfs dfs -cat  /user/training/data-output/city/part-00000 | head -n 5
+ABW	29034.000000
+AFG	583025.000000
+AGO	512320.000000
+AIA	778.000000
+ALB	270000.000000
+
+##########################################################################
+#  One last integrity check.   The number of rows in the 
+#  output file should be the number of distinct country codes in the city table in 
+#  SQL
+
+[training@localhost ~]$ mysql -p world
+mysql> select count(distinct(CountryCode)) from City;
++------------------------------+
+| count(distinct(CountryCode)) |
++------------------------------+
+|                          232 |
++------------------------------+
+1 row in set (0.00 sec)
+
+mysql> quit
+Bye
+[training@localhost ~]$ hdfs dfs -cat  /user/training/data-output/city/part-00000 | wc -l
+232
+
+####################################################################
+#  Now to finish it off.  We don't (yet) know how to do the sort in MapReduce, 
+#  but we can do it using Unix tools:  sort descending on the second field (avg population)
+#  then choose the first 10.
+#  This output should exactly match the result of the MySQL query we did on the world database.
+
+[training@localhost ~]$ hdfs dfs -cat  /user/training/data-output/city/part-00000 | sort -k 2 -n -r | head -n 10
+SGP	4017733.000000
+HKG	1650316.500000
+URY	1236000.000000
+GIN	1090610.000000
+UGA	890800.000000
+SLE	850000.000000
+LBR	850000.000000
+MLI	809552.000000
+AUS	808119.000000
+MNG	773700.000000
+
+########################################################################
+##  To finish the work on Sqoop I want to:
+##    * use Sqoop to move information from HDFS into a database table (export)
+##  Will just put the average population per country back into the "world" database.
+##  You wouldn't ordinarily do that because that data is the result of a query on those
+##  tables, so why bother?  But the example is just to demonstrate Sqoop export.
+
+## Create the MySQL table first
+[training@localhost ~]$ mysql -ptraining world
+mysql> create table AveragePopulationPerCountry (CountryCode char(3), AveragePopulation float);
+Query OK, 0 rows affected (0.03 sec)
+mysql> quit
+Bye
+
+## Export from HDFS output directory to the new table.  Notice we have to let Sqoop know that fields are tab delimited!
+[training@localhost ~]$ sqoop export --connect jdbc:mysql://localhost/world --username training --password training --table AveragePopulationPerCountry --export-dir /user/training/data-output/city --input-fields-terminated-by "\t"
+20/01/15 10:10:39 INFO sqoop.Sqoop: Running Sqoop version: 1.4.5-cdh5.4.3
+20/01/15 10:10:39 WARN tool.BaseSqoopTool: Setting your password on the command-line is insecure. Consider using -P instead.
+20/01/15 10:10:39 INFO manager.MySQLManager: Preparing to use a MySQL streaming resultset.
+20/01/15 10:10:39 INFO tool.CodeGenTool: Beginning code generation
+20/01/15 10:10:40 INFO manager.SqlManager: Executing SQL statement: SELECT t.* FROM `AveragePopulationPerCountry` AS t LIMIT 1
+20/01/15 10:10:40 INFO manager.SqlManager: Executing SQL statement: SELECT t.* FROM `AveragePopulationPerCountry` AS t LIMIT 1
+20/01/15 10:10:40 INFO orm.CompilationManager: HADOOP_MAPRED_HOME is /usr/lib/hadoop-mapreduce
+Note: /tmp/sqoop-training/compile/771de167192f7942c979a75fca1bd823/AveragePopulationPerCountry.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+20/01/15 10:10:42 INFO orm.CompilationManager: Writing jar file: /tmp/sqoop-training/compile/771de167192f7942c979a75fca1bd823/AveragePopulationPerCountry.jar
+20/01/15 10:10:42 INFO mapreduce.ExportJobBase: Beginning export of AveragePopulationPerCountry
+20/01/15 10:10:42 INFO Configuration.deprecation: mapred.job.tracker is deprecated. Instead, use mapreduce.jobtracker.address
+20/01/15 10:10:42 INFO Configuration.deprecation: mapred.jar is deprecated. Instead, use mapreduce.job.jar
+20/01/15 10:10:43 INFO Configuration.deprecation: mapred.reduce.tasks.speculative.execution is deprecated. Instead, use mapreduce.reduce.speculative
+20/01/15 10:10:43 INFO Configuration.deprecation: mapred.map.tasks.speculative.execution is deprecated. Instead, use mapreduce.map.speculative
+20/01/15 10:10:43 INFO Configuration.deprecation: mapred.map.tasks is deprecated. Instead, use mapreduce.job.maps
+20/01/15 10:10:43 INFO client.RMProxy: Connecting to ResourceManager at /0.0.0.0:8032
+20/01/15 10:10:45 INFO input.FileInputFormat: Total input paths to process : 1
+20/01/15 10:10:45 INFO input.FileInputFormat: Total input paths to process : 1
+20/01/15 10:10:45 INFO mapreduce.JobSubmitter: number of splits:4
+20/01/15 10:10:45 INFO Configuration.deprecation: mapred.map.tasks.speculative.execution is deprecated. Instead, use mapreduce.map.speculative
+20/01/15 10:10:45 INFO mapreduce.JobSubmitter: Submitting tokens for job: job_1578944364430_0011
+20/01/15 10:10:45 INFO impl.YarnClientImpl: Submitted application application_1578944364430_0011
+20/01/15 10:10:45 INFO mapreduce.Job: The url to track the job: http://localhost:8088/proxy/application_1578944364430_0011/
+20/01/15 10:10:45 INFO mapreduce.Job: Running job: job_1578944364430_0011
+20/01/15 10:10:54 INFO mapreduce.Job: Job job_1578944364430_0011 running in uber mode : false
+20/01/15 10:10:54 INFO mapreduce.Job:  map 0% reduce 0%
+20/01/15 10:11:00 INFO mapreduce.Job:  map 25% reduce 0%
+20/01/15 10:11:05 INFO mapreduce.Job:  map 50% reduce 0%
+20/01/15 10:11:10 INFO mapreduce.Job:  map 75% reduce 0%
+20/01/15 10:11:16 INFO mapreduce.Job:  map 100% reduce 0%
+20/01/15 10:11:16 INFO mapreduce.Job: Job job_1578944364430_0011 completed successfully
+20/01/15 10:11:16 INFO mapreduce.Job: Counters: 30
+	File System Counters
+		FILE: Number of bytes read=0
+		FILE: Number of bytes written=542576
+		FILE: Number of read operations=0
+		FILE: Number of large read operations=0
+		FILE: Number of write operations=0
+		HDFS: Number of bytes read=11354
+		HDFS: Number of bytes written=0
+		HDFS: Number of read operations=19
+		HDFS: Number of large read operations=0
+		HDFS: Number of write operations=0
+	Job Counters 
+		Launched map tasks=4
+		Data-local map tasks=4
+		Total time spent by all maps in occupied slots (ms)=0
+		Total time spent by all reduces in occupied slots (ms)=0
+		Total time spent by all map tasks (ms)=15612
+		Total vcore-seconds taken by all map tasks=15612
+		Total megabyte-seconds taken by all map tasks=3996672
+	Map-Reduce Framework
+		Map input records=232
+		Map output records=232
+		Input split bytes=656
+		Spilled Records=0
+		Failed Shuffles=0
+		Merged Map outputs=0
+		GC time elapsed (ms)=277
+		CPU time spent (ms)=2130
+		Physical memory (bytes) snapshot=480694272
+		Virtual memory (bytes) snapshot=3369631744
+		Total committed heap usage (bytes)=191889408
+	File Input Format Counters 
+		Bytes Read=0
+	File Output Format Counters 
+		Bytes Written=0
+20/01/15 10:11:16 INFO mapreduce.ExportJobBase: Transferred 11.0879 KB in 32.4739 seconds (349.635 bytes/sec)
+20/01/15 10:11:16 INFO mapreduce.ExportJobBase: Exported 232 records.
+[training@localhost ~]$ mysql -ptraining world
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 3798
+Server version: 5.1.73 Source distribution
+
+Copyright (c) 2000, 2013, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+##  And make sure 
+[training@localhost ~]$ mysql -ptraining world
+mysql> select * from AveragePopulationPerCountry order by AveragePopulation desc limit 10;
++-------------+-------------------+
+| CountryCode | AveragePopulation |
++-------------+-------------------+
+| SGP         |       4.01773e+06 |
+| HKG         |       1.65032e+06 |
+| URY         |         1.236e+06 |
+| GIN         |       1.09061e+06 |
+| UGA         |            890800 |
+| LBR         |            850000 |
+| SLE         |            850000 |
+| MLI         |            809552 |
+| AUS         |            808119 |
+| MNG         |            773700 |
++-------------+-------------------+
+10 rows in set (0.00 sec)
+
