@@ -1,0 +1,51 @@
+[training@localhost ~]$ ingest
+Step 1, term count
+Executing hadoop jar /usr/lib/hadoop-mapreduce/hadoop-streaming.jar -file /home/training/mrstreaming/term-count/mapper.py -mapper /home/training/mrstreaming/term-count/mapper.py -file  /home/training/mrstreaming/term-count/reducer.py  -reducer /home/training/mrstreaming/term-count/reducer.py -input /user/training/data-input/documents -output /user/training/data-output/term-count
+<Hadoop output deleted>
+
+Step 2 -- terms per document
+Executing hadoop jar /usr/lib/hadoop-mapreduce/hadoop-streaming.jar -file /home/training/mrstreaming/doc-length/mapper.py -mapper /home/training/mrstreaming/doc-length/mapper.py -file /home/training/mrstreaming/doc-length/reducer.py  -reducer /home/training/mrstreaming/doc-length/reducer.py -input /user/training/data-input/documents -output /user/training/data-output/doc-length
+<Hadoop output deleted>
+20/01/21 19:40:49 INFO streaming.StreamJob: Output directory: /user/training/data-output/doc-length
+
+Step 3 -- split doc id and term keys
+Executing hadoop jar /usr/lib/hadoop-mapreduce/hadoop-streaming.jar        -D mapred.reduce.tasks=0        -file /home/training/mrstreaming/split-doc-term/mapper.py        -mapper /home/training/mrstreaming/split-doc-term/mapper.py        -input /user/training/data-output/doc-term-count        -output /user/training/data-output/split-doc-term
+<Hadoop output deleted>
+20/01/21 19:41:51 INFO streaming.StreamJob: Output directory: /user/training/data-output/split-doc-term
+
+Step 4 -- TFIDF in hive
+<Hive and Hadoop output deleted>
+
+Step 5 -- copying tfidf data to local filesystem
+
+[training@localhost ~]$ query
+Query: dead kings
+1. shakespeare-macbeth -- 940
+2. bible-kjv -- 850
+3. shakespeare-hamlet -- 767
+4. whitman-leaves -- 560
+5. bryant-stories -- 484
+Query: jesus
+1. bible-kjv -- 2488
+2. blake-poems -- 293
+3. milton-paradise -- 50
+4. chesterton-ball -- 24
+5. melville-moby_dick -- 9
+Query: pretty dress
+1. blake-poems -- 1152
+2. bryant-stories -- 438
+3. edgeworth-parents -- 319
+4. austen-persuasion -- 287
+5. austin-persuasion -- 287
+Query: bodice ripper
+1. chesterton-ball -- 122
+Query: bodice
+Query: whale food
+1. melville-moby_dick -- 7548
+2. bryant-stories -- 851
+3. blake-poems -- 366
+4. milton-paradise -- 149
+5. shakespeare-hamlet -- 133
+Query:   C-c C-c
+KeyboardInterrupt
+[training@localhost ~]$ 
