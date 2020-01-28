@@ -1,0 +1,24 @@
+{"type": "record",
+ "name": "City",
+ "fields": [
+     {"name": "name",          "type": "string"},
+	 {"name": "area", "type": "int"},
+     {"name": "country_code",  
+		"type": {	"type": "enum", 
+					"name": "country_code", 
+					"symbols" : ["AFG", "NLD", "USA", "CAN"]
+					}
+		},
+     {"name": "district",      "type": ["string", "null"]},
+     {"name": "neighborhoods", "type": {"type": "array", "items": "string"}},
+     {"name": "mayor", 
+        "type": {"type": "record", 
+                 "name": "mayor_data",
+                 "fields": [  
+                             {"name": "name", "type": "string"},
+                             {"name": "year_elected", "type": ["int", "null"] }
+                           ] 
+                 }
+     }
+ ]
+}

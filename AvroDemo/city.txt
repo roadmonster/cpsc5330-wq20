@@ -1,0 +1,6 @@
+1,Kabul,AFG,Kabol,1780000,Kabul North,,Kabul Heights,Muhammad Yunus Nawandish,2010
+2,Qandahar,AFG,Qandahar,237500,Qandahar East,Qandahar Heights,,Muhammad Nasim Naseem,2011
+5,Amsterdam,NLD,Noord-Holland,731200,Amsterdam Heights,Red Light District,New Amsterdam,Femke Halsema,2018
+6,Rotterdam,NLD,,593321,,,,Ahmed Aboutaleb,
+7,Haag,NLD,Zuid-Holland,440900,Haag Heights,Haag Downtown,Haag Uptown,Johannes Remkes,2019
+100,Seattle,USA,Washington,725000,Seattle Heights,Ballard,Queen Anne,Jenny Durkan,
