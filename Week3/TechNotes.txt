@@ -1,0 +1,110 @@
+Agenda for 1/27 (VM Part)
+
+1. Review the "average population per country scenario"
+2. So far
+  -- Imported a database into MySQL
+  -- Performed a query to get the names of the 10 countries that have highest population per city, in order
+3. Goal is to figure out how to do that using Hadoop ecosystem
+
+4. Use Sqoop to load the tables into HDFS as delimited text files
+5. Run streaming MapReduce
+   -- look at code files
+   -- look at output in data-output/city
+6. Get output
+
+   hdfs dfs -getmerge /user/training/data-output/city city-output.tsv
+
+   and to directly compare to SQL:
+
+      sort city-output.tsv -k 2 -n -r | head -n 10
+      select CountryCode, avg(Population) from City group by CountryCode order by avg(Population) desc limit 10;
+
+7.  And finally we need to do a Sqoop export to get this "tabular" data back into mysql
+
+create table population_by_country_code (country_code char(3), average_population float(10,2));
+
+sqoop export --connect jdbc:mysql://localhost/world 
+   --table population_by_country_code 
+   --export-dir /user/training/data-output/City 
+   --username training 
+   --password training 
+   --input-fields-terminated-by '\t'
+
+select * from population_by_country_code order by average_population desc limit 10;
+
+===============
+Hive
+
+Now remember we have our World db, and we already calculated the codes of the countries 
+with the highest city-level population density (person per city).  Simple extra step:  join 
+with the Country table to get the country name.
+
+1.  Desired output through query to  MySQL
+
+select Country.Name, avg(City.Population) from City, Country where City.CountryCode = Country.Code group by CountryCode order by avg(City.Population) desc limit 10;
+
+2.  We'll create the two Hive tables, City and Country.  One we will do from the current 
+    HDFS files, the other we will do directly from MySQL.
+
+3.  First start the server:
+
+    sudo service hive-server2 start
+
+then try the Hive shell.
+
+4.  Before going further, make a copy of the City data in HDFS!
+
+5.  Hive:
+    create table City (ID INT, Name STRING, CountryCode STRING, District STRING, Population INT);
+    load data inpath "/user/training/City" into table city;
+
+But do a select * from city and see that it didn't get the field delimiter.
+
+    drop table City
+
+    create table City (ID INT, Name STRING, CountryCode STRING, District STRING, Population INT) row format delimited fields terminated by ',';
+
+   After that completes, note that the data is here:  /user/hive/warehouse/city
+   And also look at the Metastore from Hue and see the table meta-information.
+
+6.  Now try to get Country into Hive using sqoop
+
+     sqoop import --connect jdbc:mysql://localhost/world --username training --password training --fields-terminated-by '\t' --table Country --hive-import
+
+   Remember Country needs to be deleted in HDFS ahead of time.
+   Verify the table and its schema.
+
+7.  Now the join:
+    The first join I tried worked in MySQL 
+
+    select Country.Name, avg(City.Population) from City, Country where City.CountryCode = Country.Code group by CountryCode order by avg(City.Population) desc limit 10;
+
+So separate the join from the group using a subquery and it works:
+
+    select Country.Name, pop.ap from Country, (select Countrycode as cc, avg(Population) as ap from City group by CountryCode) as pop where Country.code = cc;
+
+8.  And now finally we need to export the Hive table out to the local filesystem:
+
+INSERT OVERWRITE LOCAL DIRECTORY '/home/training/country-average-population' ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t' STORED AS TEXTFILE select Country.Name, pop.ap from Country, (select Countrycode as cc, avg(Population) as ap from City group by CountryCode) as pop where Country.code = cc;
+
+(It's a known hive bug that you can't use a custom separator to write to HDFS.  That's why we go local.)
+
+And finally we can do this:
+cat country-average-population/* | sort -k 2 -t $'\t' -n -r | head -n 10
+
+Summary:
+Using Hadoop / HDFS look like an RDBMS
+1.  Load relational data into HDFS using Sqoop
+2.  Creating tables in Hive
+3.  Associating a table with data in HDFS
+4.  Hive queries
+5.  Exporting
+
+A big deal right now is schema information.  
+Things work fine for Hive, but for MapReduce, not so much!
+
+
+
+
+
+
