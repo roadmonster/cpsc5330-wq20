@@ -1,0 +1,3 @@
+hdfs dfs -rm /user/training/data-output/$3/*
+hdfs dfs -rmdir /user/training/data-output/$3
+hadoop jar /usr/lib/hadoop-mapreduce/hadoop-streaming.jar -file /home/training/mrstreaming/$1/mapper.py -mapper /home/training/mrstreaming/$1/mapper.py -file /home/training/mrstreaming/$1/reducer.py  -reducer /home/training/mrstreaming/$1/reducer.py -input /user/training/data-input/$2/* -output /user/training/data-output/$3
