@@ -1,0 +1,44 @@
+AWS / EMR Lab
+
+The goal of this lab is to get you running map reduce jobs on AWS/EMR
+
+Hand in these files:
+
+1.  A file README.txt that says what is working and what is not working, what you got stuck on,
+and what material you would like to cover in next class because it was unclear or you need or want 
+to learn more.  In your README.txt file, please be clear as to what files you are handing in, and how
+they relate to the deliverables below
+
+2.  Files for each part you attempt, as listed below.
+
+============================
+Part 1:  (1 point)
+
+Duplicate the WordCount job we did in class.
+Create a cluster, add it as a step, set the input and output folders, and run the job.
+
+Hand in:
+1.  The complete code of your WordCount.java file
+2.  The syslog file from the successful (or unsuccessful) EMR run
+
+===========================
+Part 2:  (1 additional point)
+
+The first step in our TfIDF job flow was to take the text documents and produce counts of the 
+form "<term_id>+<documents_id>\t count" which fed in to future steps in computing TfIDF.
+
+Make this same MapReduce job work on EMR. 
+The Python code is in the course repository;  you will have to translate it to Java.
+
+Hint:  this is how you get the mapper file name
+
+    import org.apache.hadoop.mapreduce.lib.input.FileSplit;
+    String fileName = ((FileSplit) context.getInputSplit()).getPath().getName();
+
+Run the program on the whole document corpus, which is here:
+s3://hanks-bda-2020-01/data-input/books
+
+Hand in:
+1.  The complete code of your application Java file
+2.  The syslog file from the successful (or unsuccessful) EMR run
+
