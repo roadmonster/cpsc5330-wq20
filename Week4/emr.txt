@@ -1,0 +1,37 @@
+EMR 
+
+Get a MapReduce job running on EMR 
+
+-- Visit EMR and show basic concepts.  Show variety of jobs you can launch.  We're choosing custom JAR.
+
+Create cluster:  default instance type errors.  Use m5.xlarge
+
+Will do it in Eclipse
+
+Download Hadoop Common and Hadoop Mapreduce Client Core from Maven
+https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-client/2.8.5/
+https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-mapreduce-client-core/2.8.5/
+
+1.  Create Eclipse Java Project
+2.  New Class
+3.  Project -> Properties -> Java Build Path -> Import external jars
+...
+4.  Export -> as JAR -> Uncheck .classpath and .project;  check "export generated" and "compress"
+5.  Upload JAR file
+6.  Start cluster
+7.  New step -- custom JAR;  set JAR location;  set three arguments:  main, input folder, output folder
+
+(all on one line)
+Cities 
+s3://hanks-bda-2020-01/data-input/city 
+s3://hanks-bda-2020-01/cityoutput
+
+PUT THESE TWO LINES IN WORD COUNT!
+    job.setMapOutputKeyClass(Text.class);
+    job.setMapOutputValueClass(IntWritable.class);
+	
+They are not necessary for Word Count, but are necessary for city population.
+Who knows why??
+Also, remember you haven't actually tested those two lines in Word Count. 
+Seems IMPOSSIBLE that they would break things, but that pretty much assures that they will.
+
