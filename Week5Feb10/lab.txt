@@ -1,74 +1,215 @@
+LAB NOTES FOR Feb 10
+
 THIS LAB WILL NOT BE HANDED IN
 
 We are in the process of moving off the VM environment and into a real cluster / distributed data pipeline on AWS.
 
-So far we looked at S3 to store files 
+In the previoua lab we looked at S3 to store files 
   *  input data files
   *  output of EMR jobs
   *  JAR files to run MapReduce, config files etc.
 
-We also looked at submitting a "custom JAR" EMR job through the EMR console.
+We also practiced at submitting a "custom JAR" EMR job through the EMR console.
 
-We will continue exploring AWS with the idea of completely reconstructing the document search example on AWS.  So we will have the EMR jobs to do the indexing followed by putting computed TFIDF results in Cassandra followed by some kind of application to return query results.
+In this lab we will continue exploring AWS with the idea of completely reconstructing the document search example on AWS.  So we will have EMR jobs to do the indexing followed by putting computed TFIDF results in Cassandra/
+DynamoDB, followed by some kind of application to return query results.
 
-Directions to go next:
+Directions we go next:
   -- look at DynamoDB as our Cassandra equivalent
   -- create a DynamoDB table to hold our TFIDF data
   -- migrate TFIDF data to the DynamoDB tables
   -- write a Python application to retrieve from DynamoDB
-  -- (think about what our end application might look like)
+  -- (think about what our end search application might look like)
 
 ==============
-DynamoDB on the AWS Console
+Explore DynamoDB on the AWS Console
+Goals:
+   * Learn the parameters and methods required for 
+     creating a table and getting and putting items in the table
+   * Create a table, get and put an item in the table 
+        using the console
 
-Look at DynamoDB console 
-Understand Read Units and Write Units
-https://docs.amazonaws.cn/en_us/amazondynamodb/latest/developerguide/ProvisionedThroughput.html
+1.  Look at DynamoDB console on AWS page
+2.  Understand how AWS charges for DynamoDB -- read Units and
+       Write Units -- you can 
+       get more performance by increasing RU and/or WU, 
+       but be careful to set them back because you get charged
+       for capacity whether you are using it or not.  
 
-Create the TFIDF table
-  -- partition key
-  -- sort key
-  -- secondary indexes
+Read this for understanding provisioned throughput charging.  https://docs.amazonaws.cn/en_us/amazondynamodb/latest/developerguide/ProvisionedThroughput.html
 
-Create the table, then we can add an item and query an item.
-Look at other parameters like scaling / capacity.
 
-Now to move the data from S3 to DynamoDB
+1. Create the TFIDF table for our TFIDF application -- start at the AWS DynamoDB Console.
+2.  Remember that our TFIDF data is of the form
+        <term>\t<docid>\t<tfidf-value> 
+and eventually we need to load that data into a table.
+
+  -- Create table -- give it any name you want, like tfidf
+    -- partition key:  for our search application we will be
+          retrieving by 'term'
+    -- sort key:  this allows retrieval by ranges or value within
+          a partition key.  For us that might be 'doc_id'
+    -- secondary indexes: we will not use secondary indexes, 
+          but read documentation to understand what secondary
+          index are used for
+
+3.  Once the table is created, use the GUI to add an item and query an item.  We will eventually want to 
+do the adding and querying from a Python program but for now the GUI is good for understanding the concepts.
+
+4.  In the GUI, look at other parameters for the table, like scaling / capacity.  That gives us an idea of 
+what choices we might make if we were to use the table in production
+
+AT THE END OF THIS PHASE
+  -- Create a DynamoDB table
+  -- Put a new item in the table, and lookup an item in the
+     table, using the GUI
+
+=============================
+Now we have two use cases for the table:
+
+1.  Move the TFIDF data currently in S3 to the dynamodb table
+2.  Build a search/query application that does lookups in DynamoDB
+
+The TFIDF data is in this location:
+
+s3://hanks-bda-2020-01/data-output/termDocumentCount/
+
+You should try to locate this bucket and folder in the AWS
+Console.  If you cannot get access to the bucket, let me
+know and we will figure out how you can move this data into
+your own S3 bucket.
+
+The data load is moving these records (term, docid, tfidf)
+the DynamoDB table you just created.
+
+There are good tools in AWS to do the data migration:
+
 1.  Data Pipeline
 2.  Database migration service
-Neither is available to us!
 
-Python application to read S3 files and do PutItem into the DynamoDB database.
+But our accounts are not enabled to use either of those, so we will have to write code to do it:
+   
+* A Python application to read S3 files and do PutItem into the DynamoDB database.
 
-1.  Get an EC2 instance
-AMI Type:  ami-04b9e92b5572fa0d1  (Ubuntu)
-Instance type:  t2.micro
+AT THIS PHASE:
+   You know the location of an S3 bucket containing 
+   the TFIDF output from Assignment 1.
 
-2.  Generate a key pair
-EC2 -> Key Pairs
+============================================
+CREATING an EC2 Instance
+
+For both the indexing and query applications, it is best if we provision an EC2 instance -- that will give us a uniform platform, 
+like our Cloudera VM only with more up to date software.
+https://aws.amazon.com/ec2/
+
+To create an EC2 instance, we need to specify AMI (Amazon Machine Image) and instance size.
+
+1.  Go to the EC2 Console page and select Create Instance, and it will ask you for both AMI and instance type
+For this class we will use
+   * AMI Type:  ami-04b9e92b5572fa0d1  
+     (Ubuntu -- has the right Linux version)
+   * Instance type:  t2.micro
+
+In order to log onto the instance, you will need a key pair.
+Go to  EC2 -> Key Pairs  for creating a pair.
+Read 
+http://resources.intenseschool.com/amazon-aws-understanding-ec2-key-pairs-and-how-they-are-used-for-windows-and-linux-instances/
+
+2.  Generate a key pair according to whether you are using Windows or MacOS.
 
 3.  Launch the instance
-   Give it a name !!
+   It is useful to give the instance a name for your own future
+   reference
   
 4.  SSH to the instance
-Look at Connect instructions -- different for Windows and Mac/Linux
+The page for the instance will have Connect instructions -- different for Windows and Mac/Linux.
+Verify that you can successfully log on to the instance.
+Check that Python is present
+    which python3
 
-5.  Get CLI access
-Install the CLI if necessary  
+5.  Now that we can SSH to the instance and have a shell, the next step is to get CLI (Amazon command line interface) 
+access to S3 and DynamoDB.
+Read documentation on AWS CLI: https://aws.amazon.com/cli/
+
+6.  Install the CLI on your EC2 instance
+
 sudo apt-get update
 sudo apt-get install awscli
 
-Configure it with security tokens
+7.  The CLI needs to be configured with security tokens 
+associated with your  account.  
+Read this material on configuring the CLI https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html
+
+8.  You need to find your security credentials (Access Key and Secret Access Key).  The location of this information varies from account to account, but start at the AWS console, use the dropdown
+showing your name/account at the top, and select "My Security Credentials."  then Access Keys.   You are looking for these
+lines:
+
+
+    Access Key ID:
+    AKIAJ45ONKRLEUYAZAIQ
+    Secret Access Key:
+    yspYvFuAYzzcauXI0sFD7/cW9WXGOxTMUpCA0Ap1
+
+You may have to create a new access key.  Save these keys.
+
+You now need to configure CLI credentials on your EC2.
+Credentials are stored in a file .aws/configure and the content
+looks like this:
+
+[default]
+aws_access_key_id=ASIAQXPMTFWOJZK...
+aws_secret_access_key=Q61leYbzpQTjbUNyu79W  ....
+aws_session_token=FwoGZXIvYXdzEIn
+
+
+though your account may not have a session token.
+You can populate the values on the EC2 using the command
+
 aws configure
-or edit .aws/configure directly
 
-Verify CLI access with aws s3 ls
-Verify with aws dynamodb list-tables
+or you can edit .aws/configure directly.  
 
-6.  Python access -- attach to dynamodb and do a key access and update
+You can search for 'configure aws cli' for 
+more information.  For example:  https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html
 
-You will need to install boto3
-pip install boto3
+After finishing the configuration, verify you have access to AWS by trying these commands:
+  * aws s3 ls
+  * aws dynamodb list-tables
+ 
+The latter command should show the dynamoDB table you just created.
+
+You should do more research about the commands available using the CLI.  For example, how do you do a DynamoDB query using the CLI? 
+
+AT THIS PHASE
+  * You can create an EC2 instance and log on to it 
+     using a key pair
+  * You have configued the AWS CLI with your credentials
+  * You can run commands through the CLI to 
+     * List your S3 buckets
+     * List your dynamoDB tables
+
+=====================================
+Now we can access AWS using the command line, but we need access through Python as well
+
+The first task will be to write a Python program that will do a GET from DynamoDB and
+an UPDATE through DynamoDB.  We will use the boto3 library to access AWS.
+
+For reference, consult the boto3 documentation:  https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
+
+You will need to install boto3 on your EC2 instance
+        pip install boto3
+
+Here is some python code that uses boto3 to read and write from DynamoDB.
+
+You should read and understand the code.  
+You should be able to run the code successfully, substituting 
+your DynamoDB table name for the table name in the code.
+
+You should be able to understand how to use this code to put a new item into DynamoDB and
+then read the new value.   
+
+Make this code run on your EC2 instance.  You will have
+to customize it with the name of your dynamodb table
 
 ==============================
 #!/usr/bin/python3
@@ -86,9 +227,35 @@ def putItem():
     client = boto3.resource('dynamodb')
     table = client.Table('tfidf')
     table.put_item(Item={ 'term': 'test_term', 'doc_id': 'test_docid', 'value': Decimal(1.0) })
+
+putItem()
+queryItem()
 =================================
 
-7.  Read from an S3 bucket
+Go to the DynamoDB console page and verify the new record is there.
+
+AT THIS PHASE
+  * You should be able to write Python code to get and put 
+     items into a DynamoDB table you created at the console
+
+========================================================
+The next piece of code helps complete the task of loading 
+TFIDF data from our S3 bucket into DynamoDB.  
+
+My S3 file referenced below contains the output of the TFIDF indexing phase from Assignment 1.  
+You should be able to read that file and write items into your
+DynamoDB table:
+
+To read from S3 we will use the smart_open library.
+Find and familiarize yourself with this library.  
+
+The documentation has instructions
+on how to install the library, which you should do on your S3 instance:
+https://pypi.org/project/smart-open/
+
+The following code reads records from the S3 file.  This will demonstrate that you can 
+use smart_open and you can read the S3 bucket.  You should understand this code completely.
+We will save writing to DynamoDB for the next step.
 
 #!/usr/bin/python3
 import boto3
@@ -107,5 +274,67 @@ def read_tfidf_records():
             if (i > 10):
                 break
             i += 1
+
+THIS PHASE
+   * You should now be able to write a program that reads from 
+     an S3 file and writes to the console
+
+====================================
+Now you have the pieces to do the "indexing" phase:  
+
+* you have the TFIDF file data in an S3 directory.  You can either read directly from my S3 bucket, or upload your own
+* you know how to iterate over records from an S3 file
+* you know how to put a new item in your DynamoDB table
+
+Your goal is to have your DynamoDB table populated with all ~ 198K items from the S3 TFIDF index.
+
+Write a Python program that will do that:  
+* iterate over all records in an S3 file/directory
+* for each record, write an item to DynamoDB
+
+Try ths program first on a small number of records to make
+sure it's working.
+
+Now try to run it on all records in S3.
+You will soon see that your program will be impossibly slow to 
+load all the records.
+
+This is because your DynamoDB table does not have enough write
+capacity.
+
+You will need to go back to the EC2 page and temporarily increase the write capacity of your DynamoDB instance.  
+
+On the Capacity tab, increase the Write Capacity Units as high as you can.
+
+You should see after you do that that your Python program to populate your DynamoDB table should run
+MUCH faster.   That's good, but you need to make VERY SURE that once the Python load program is finished,
+you decrease the write capacity of your table back to the original value or below.  Otherwise you will spend your AWS budget very quickly!
+
+AT THIS PHASE:
+  * You have a Python program that will fully populate your 
+    DynamoDB table with the TFIDF information, and you can query
+    that information using Python (boto3) statements
+
+========================================
+
+Next you will retrieve your TFIDF query program from the VM, or you can use mine if you would rather.   It is checked in to the repository.   Move it to your EC2 instance
+   * You can just copy and paste the code, or explore how
+     to use SSH to move information to and from your EC2
+
+https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AccessingInstancesLinux.html
+
+Edit the program so it retrieves the TFIDF data from DynamoDB instead of from an in-memory dictionary.
+
+THIS PHASE
+  * Now you have a Python console app that duplicates the 
+    functionality of your Assignment 1 TFIDF application
+
+========================
+Two remaining steps for next time:
+
+  1.  Move the "index" process over from MapReduce on the VM
+      to MapReduce and Hive on EMR
+  2.  Move the query application so you don't need the EC2
+      instance to query the documents
 
 
