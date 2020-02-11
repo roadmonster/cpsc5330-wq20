@@ -1,0 +1,111 @@
+THIS LAB WILL NOT BE HANDED IN
+
+We are in the process of moving off the VM environment and into a real cluster / distributed data pipeline on AWS.
+
+So far we looked at S3 to store files 
+  *  input data files
+  *  output of EMR jobs
+  *  JAR files to run MapReduce, config files etc.
+
+We also looked at submitting a "custom JAR" EMR job through the EMR console.
+
+We will continue exploring AWS with the idea of completely reconstructing the document search example on AWS.  So we will have the EMR jobs to do the indexing followed by putting computed TFIDF results in Cassandra followed by some kind of application to return query results.
+
+Directions to go next:
+  -- look at DynamoDB as our Cassandra equivalent
+  -- create a DynamoDB table to hold our TFIDF data
+  -- migrate TFIDF data to the DynamoDB tables
+  -- write a Python application to retrieve from DynamoDB
+  -- (think about what our end application might look like)
+
+==============
+DynamoDB on the AWS Console
+
+Look at DynamoDB console 
+Understand Read Units and Write Units
+https://docs.amazonaws.cn/en_us/amazondynamodb/latest/developerguide/ProvisionedThroughput.html
+
+Create the TFIDF table
+  -- partition key
+  -- sort key
+  -- secondary indexes
+
+Create the table, then we can add an item and query an item.
+Look at other parameters like scaling / capacity.
+
+Now to move the data from S3 to DynamoDB
+1.  Data Pipeline
+2.  Database migration service
+Neither is available to us!
+
+Python application to read S3 files and do PutItem into the DynamoDB database.
+
+1.  Get an EC2 instance
+AMI Type:  ami-04b9e92b5572fa0d1  (Ubuntu)
+Instance type:  t2.micro
+
+2.  Generate a key pair
+EC2 -> Key Pairs
+
+3.  Launch the instance
+   Give it a name !!
+  
+4.  SSH to the instance
+Look at Connect instructions -- different for Windows and Mac/Linux
+
+5.  Get CLI access
+Install the CLI if necessary  
+sudo apt-get update
+sudo apt-get install awscli
+
+Configure it with security tokens
+aws configure
+or edit .aws/configure directly
+
+Verify CLI access with aws s3 ls
+Verify with aws dynamodb list-tables
+
+6.  Python access -- attach to dynamodb and do a key access and update
+
+You will need to install boto3
+pip install boto3
+
+==============================
+#!/usr/bin/python3
+import boto3
+from boto3.dynamodb.conditions import Key
+import json
+from decimal import Decimal
+
+def queryItem(term):
+    client = boto3.resource('dynamodb')
+    table = client.Table('tfidf')
+    return table.query(KeyConditionExpression=Key('term').eq(term))
+
+def putItem():
+    client = boto3.resource('dynamodb')
+    table = client.Table('tfidf')
+    table.put_item(Item={ 'term': 'test_term', 'doc_id': 'test_docid', 'value': Decimal(1.0) })
+=================================
+
+7.  Read from an S3 bucket
+
+#!/usr/bin/python3
+import boto3
+from smart_open import open
+from decimal import Decimal
+
+def read_tfidf_records():
+    f = 's3://hanks-bda-2020-01/data-output/termDocumentCount/part-r-00000'
+    res = boto3.resource('dynamodb')
+    with open(f, 'rb') as fin:
+        i = 1
+        for line in fin:
+            strvalue = line.decode('utf-8').strip()
+            doc_id, term, value = strvalue.split('\t')
+            print(f"{doc_id} / {term} / {value}")
+            if (i > 10):
+                break
+            i += 1
+
+
