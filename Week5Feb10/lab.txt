@@ -4,7 +4,7 @@ THIS LAB WILL NOT BE HANDED IN
 
 We are in the process of moving off the VM environment and into a real cluster / distributed data pipeline on AWS.
 
-In the previoua lab we looked at S3 to store files 
+In the previous lab we looked at S3 to store files 
   *  input data files
   *  output of EMR jobs
   *  JAR files to run MapReduce, config files etc.
@@ -188,153 +188,12 @@ AT THIS PHASE
      * List your S3 buckets
      * List your dynamoDB tables
 
-=====================================
-Now we can access AWS using the command line, but we need access through Python as well
+=============================
+For next time:
 
-The first task will be to write a Python program that will do a GET from DynamoDB and
-an UPDATE through DynamoDB.  We will use the boto3 library to access AWS.
+We will use the boto3 library as a Python to AWS interface.
 
 For reference, consult the boto3 documentation:  https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
 
 You will need to install boto3 on your EC2 instance
         pip install boto3
-
-Here is some python code that uses boto3 to read and write from DynamoDB.
-
-You should read and understand the code.  
-You should be able to run the code successfully, substituting 
-your DynamoDB table name for the table name in the code.
-
-You should be able to understand how to use this code to put a new item into DynamoDB and
-then read the new value.   
-
-Make this code run on your EC2 instance.  You will have
-to customize it with the name of your dynamodb table
-
-==============================
-#!/usr/bin/python3
-import boto3
-from boto3.dynamodb.conditions import Key
-import json
-from decimal import Decimal
-
-def queryItem(term):
-    client = boto3.resource('dynamodb')
-    table = client.Table('tfidf')
-    return table.query(KeyConditionExpression=Key('term').eq(term))
-
-def putItem():
-    client = boto3.resource('dynamodb')
-    table = client.Table('tfidf')
-    table.put_item(Item={ 'term': 'test_term', 'doc_id': 'test_docid', 'value': Decimal(1.0) })
-
-putItem()
-queryItem()
-=================================
-
-Go to the DynamoDB console page and verify the new record is there.
-
-AT THIS PHASE
-  * You should be able to write Python code to get and put 
-     items into a DynamoDB table you created at the console
-
-========================================================
-The next piece of code helps complete the task of loading 
-TFIDF data from our S3 bucket into DynamoDB.  
-
-My S3 file referenced below contains the output of the TFIDF indexing phase from Assignment 1.  
-You should be able to read that file and write items into your
-DynamoDB table:
-
-To read from S3 we will use the smart_open library.
-Find and familiarize yourself with this library.  
-
-The documentation has instructions
-on how to install the library, which you should do on your S3 instance:
-https://pypi.org/project/smart-open/
-
-The following code reads records from the S3 file.  This will demonstrate that you can 
-use smart_open and you can read the S3 bucket.  You should understand this code completely.
-We will save writing to DynamoDB for the next step.
-
-#!/usr/bin/python3
-import boto3
-from smart_open import open
-from decimal import Decimal
-
-def read_tfidf_records():
-    f = 's3://hanks-bda-2020-01/data-output/termDocumentCount/part-r-00000'
-    res = boto3.resource('dynamodb')
-    with open(f, 'rb') as fin:
-        i = 1
-        for line in fin:
-            strvalue = line.decode('utf-8').strip()
-            doc_id, term, value = strvalue.split('\t')
-            print(f"{doc_id} / {term} / {value}")
-            if (i > 10):
-                break
-            i += 1
-
-THIS PHASE
-   * You should now be able to write a program that reads from 
-     an S3 file and writes to the console
-
-====================================
-Now you have the pieces to do the "indexing" phase:  
-
-* you have the TFIDF file data in an S3 directory.  You can either read directly from my S3 bucket, or upload your own
-* you know how to iterate over records from an S3 file
-* you know how to put a new item in your DynamoDB table
-
-Your goal is to have your DynamoDB table populated with all ~ 198K items from the S3 TFIDF index.
-
-Write a Python program that will do that:  
-* iterate over all records in an S3 file/directory
-* for each record, write an item to DynamoDB
-
-Try ths program first on a small number of records to make
-sure it's working.
-
-Now try to run it on all records in S3.
-You will soon see that your program will be impossibly slow to 
-load all the records.
-
-This is because your DynamoDB table does not have enough write
-capacity.
-
-You will need to go back to the EC2 page and temporarily increase the write capacity of your DynamoDB instance.  
-
-On the Capacity tab, increase the Write Capacity Units as high as you can.
-
-You should see after you do that that your Python program to populate your DynamoDB table should run
-MUCH faster.   That's good, but you need to make VERY SURE that once the Python load program is finished,
-you decrease the write capacity of your table back to the original value or below.  Otherwise you will spend your AWS budget very quickly!
-
-AT THIS PHASE:
-  * You have a Python program that will fully populate your 
-    DynamoDB table with the TFIDF information, and you can query
-    that information using Python (boto3) statements
-
-========================================
-
-Next you will retrieve your TFIDF query program from the VM, or you can use mine if you would rather.   It is checked in to the repository.   Move it to your EC2 instance
-   * You can just copy and paste the code, or explore how
-     to use SSH to move information to and from your EC2
-
-https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AccessingInstancesLinux.html
-
-Edit the program so it retrieves the TFIDF data from DynamoDB instead of from an in-memory dictionary.
-
-THIS PHASE
-  * Now you have a Python console app that duplicates the 
-    functionality of your Assignment 1 TFIDF application
-
-========================
-Two remaining steps for next time:
-
-  1.  Move the "index" process over from MapReduce on the VM
-      to MapReduce and Hive on EMR
-  2.  Move the query application so you don't need the EC2
-      instance to query the documents
-
-
