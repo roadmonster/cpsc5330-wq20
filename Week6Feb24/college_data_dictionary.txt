@@ -1,0 +1,11 @@
+UNITID -- Unique ID
+INSTNM -- Institution name
+CITY
+STABBR -- State abbreviation
+NPT4_PUB  -- Ignore
+NPT4_PRIV  -- Ignore
+COST -- Cost in $
+ADM_RATE -- Admission rate
+SAT_AVG -- Average SAT score
+DISTANCEONLY -- Distance only (0/1)
+CIPTITLE1,2,3 -- Names of primary programs

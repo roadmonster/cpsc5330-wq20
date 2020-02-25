@@ -1,0 +1,35 @@
+The education department maintains a large database of data about colleges and universities.
+For this exercise we will use a small data set, in college_data_small.csv -- the data dictionary 
+is in college_data_dictionary.txt
+
+You will build a system that will culminate in a query asking for all colleges in a state, 
+and provide a cost threshold, and the system will print all colleges in that state with 
+cost below the threshold, ordered by cost. 
+
+You will only store the following information about each college
+-- state (this is your partition key)
+-- cost (this is your sort key)
+-- name
+-- city
+-- admission rate (multiply the value by 100 and store it as an integer)
+
+
+1.  Create your DynamoDB table.  (Use state as the partition key and cost as the sort key.)
+      You can store only admission rate in addition to state and cost
+2.  Upload the data file to an S3 bucket
+3.  Write Python code to read from the college data file and populate the DynamoDB table.
+      PLEASE ONLY LOAD THE FIRST 3000 ITEMS TO SAVE MONEY.
+	  
+4.  Write a Python program that will prompt for a state name and a cost threshold,
+    and will print a list of the colleges in that state under the threshold, in ascending
+	order of cost.  (Hint:  since cost is your sort key, you get the costs in ascending order).
+	For each college, print the name, state, city, cost, and admission rate.
+	
+For 1 additional point:
+Notice the last three fields are "primary programs."  Mostly these are null.
+Extend your program to add an array of programs to the DynamoDB record, and 
+to print the programs in the output for each college.
+
+TO HAND IN:
+1.  A file README.txt that tells me how far you got, and what is working
+2.  Two files:  upload.py  and query.py with your code

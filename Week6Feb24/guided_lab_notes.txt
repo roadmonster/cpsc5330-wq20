@@ -16,6 +16,10 @@ For reference, consult the boto3 documentation:  https://boto3.amazonaws.com/v1/
 You will need to install boto3 on your EC2 instance
         pip install boto3
 
+
+Note:  trouble installing boto3?
+Try this URL:  https://stackoverflow.com/questions/54753301/how-to-install-boto3-on-ubuntu-18-04
+
 Here is some python code that uses boto3 to read and write from DynamoDB.
 
 You should read and understand the code.  
@@ -35,18 +39,19 @@ from boto3.dynamodb.conditions import Key
 import json
 from decimal import Decimal
 
-def queryItem(term):
+def queryItem(docid):
     client = boto3.resource('dynamodb')
     table = client.Table('tfidf')
-    return table.query(KeyConditionExpression=Key('term').eq(term))
+    return table.query(KeyConditionExpression=Key('docid').eq(docid))
 
 def putItem():
     client = boto3.resource('dynamodb')
     table = client.Table('tfidf')
-    table.put_item(Item={ 'term': 'test_term', 'doc_id': 'test_docid', 'value': Decimal(1.0) })
+    table.put_item(Item={ 'term': 'test_term', 'docid': 'test_docid', 'value': Decimal(1.0) })
 
 putItem()
-queryItem()
+print(queryItem('test_docid'))
+
 =================================
 
 Go to the DynamoDB console page and verify the new record is there.
@@ -97,13 +102,18 @@ THIS PHASE
      an S3 file and writes to the console
 
 ====================================
-Now you have the pieces to do the "indexing" phase:  
+Now you have the pieces to do the "data load" phase:  
 
 * you have the TFIDF file data in an S3 directory.  You can either read directly from my S3 bucket, or upload your own
 * you know how to iterate over records from an S3 file
 * you know how to put a new item in your DynamoDB table
 
-Your goal is to have your DynamoDB table populated with all ~ 198K items from the S3 TFIDF index.
+Your goal is to have your DynamoDB table populated with all items in the TFIDF file.  For the purposes of time and budget, 
+we will use a smaller file:
+
+f = 's3://hanks-bda-2020-01/data-output/tfidf-small/tfidf-small.tsv'
+
+This file has about 23K records from three documents.
 
 Write a Python program that will do that:  
 * iterate over all records in an S3 file/directory
