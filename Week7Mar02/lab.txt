@@ -1,0 +1,13 @@
+Lab for March 2
+
+You have one of two choices.
+
+1.  Finish the TFIDF code.  We have done TF, you do IDF.
+    1 point possible
+
+2.  The College notebook has some manipulations on the reduced college data set we looked at last week.  There is a 1 point, 2 point, and 5 point option.
+
+Hand in:
+
+1.  Either the TFIDF notebook file or the College notebook file
+2.  A README file with your names, what you did, and what is and is not working.  For this assignment it is fine to keep test cells and cell output in your notebook if it shows your code in action.

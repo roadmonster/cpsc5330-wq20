@@ -1,0 +1,39 @@
+Lab for March 1
+
+Spark and RDDs
+
+1.  We will be using Databricks Community for this lab, so create an account if necessary, and log in
+https://community.cloud.databricks.com/
+
+2.  We will not follow the Quick Start guide for now, because it uses Spark SQL and we won't go there
+until next week.
+
+3.  First create a Notebook
+  Workspace -> Dropdown with your email -> Create Notebook
+
+4.  Next create a cluster -- use the defaults
+
+5.  Attach the cluster to the workspace
+
+6.  Verify that the Spark context is there
+
+7.  Try looking at the RDD.  Try taking the average value of the second field.
+
+8.  Next we will get some files.  We will do a tiny version of TF-IDF, so we'll get a couple of document
+files.
+
+9.  Data -> Add Data -> Create New Table -> Upload File
+  Documents are in the repo, week 4, textcorpora
+
+10. Note the file name at the bottom
+
+11.  Create a new notebook to start TFIDF --0 can attach to the same cluster!
+
+12.  Establish an RDD connected to the file
+
+13.  Our goal is (term, doc_id) -- from this we can get our first phase:
+        (term, doc_id, weighted_term_count)
+and for the lab you can finish it off to get
+        (term, doc_id, tfidf)
+
+		
